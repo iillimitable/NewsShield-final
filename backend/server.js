@@ -15,8 +15,7 @@ const app = express();
 
 const PORT = process.env.PORT || 5000;
 
-const GEMINI_MODEL =
-  process.env.GEMINI_MODEL || "gemini-3.8-flash";
+const GROQ_MODEL = "qwen/qwen3.8-27b";
 
 // ==========================================
 // MIDDLEWARE
@@ -324,22 +323,22 @@ async function searchNews(
 }
 
 // ==========================================
-// GEMINI VERIFICATION
+// GROQ VERIFICATION
 // ==========================================
 
 async function geminiVerify(
   claim,
   sources
 ) {
-  if (!process.env.GEMINI_API_KEY) {
+  if (!process.env.GROQ_API_KEY) {
     throw new Error(
-      "GEMINI_API_KEY is missing."
+      "GROQ_API_KEY is missing."
     );
   }
 
   const sourceText =
     sources
-      .slice(0, 18)
+      .slice(0, 5)
       .map(
         (
           source,
@@ -350,14 +349,13 @@ Title: ${source.title || ""}
 URL: ${source.url || ""}
 Content: ${(source.content || "").slice(
             0,
-            4000
+            800
           )}`;
         }
       )
       .join("\n\n");
 
-  const prompt = `
-You are NewsShield, a professional news verification system.
+  const prompt = `You are NewsShield, a professional news verification system.
 
 Verify the following news claim using ONLY the provided web sources.
 
@@ -367,14 +365,9 @@ ${claim}
 WEB SOURCES:
 ${sourceText}
 
-Choose exactly one verdict:
-
-Real
-Fake
-Unverified
+Choose exactly one verdict: Real, Fake, or Unverified.
 
 Rules:
-
 1. Use only the provided evidence.
 2. Do not invent facts.
 3. Direct reliable support means Real.
@@ -386,28 +379,13 @@ Rules:
 9. Confidence must represent how strongly the available evidence supports the verdict.
 10. Supporting and contradicting values must be percentages from 0 to 100.
 
-Return ONLY valid JSON.
-
-Use exactly this structure:
-
-{
-  "verdict": "Real",
-  "reason": "Short evidence-based explanation",
-  "confidence": 80,
-  "supporting": 70,
-  "contradicting": 30
-}
-`;
-
-  const url =
-    "https://generativelanguage.googleapis.com/v1beta/models/" +
-    GEMINI_MODEL +
-    ":generateContent";
+Return ONLY a valid JSON object with no extra text, no markdown, no code blocks. Use exactly this structure:
+{"verdict":"Real","reason":"Short evidence-based explanation","confidence":80,"supporting":70,"contradicting":30}`;
 
   let lastError = null;
 
   // ========================================
-  // GEMINI REQUEST
+  // GROQ REQUEST
   // ========================================
 
   for (
@@ -417,73 +395,67 @@ Use exactly this structure:
   ) {
     try {
       console.log(
-        `Gemini request attempt ${attempt}/3`
+        `Groq request attempt ${attempt}/3`
       );
 
       const response =
         await axios.post(
-          url,
+          "https://api.groq.com/openai/v1/chat/completions",
           {
-            contents: [
+            model: GROQ_MODEL,
+            messages: [
               {
-                parts: [
-                  {
-                    text: prompt,
-                  },
-                ],
+                role: "user",
+                content: prompt,
               },
             ],
-
-            generationConfig: {
-              temperature: 0.1,
-
-              responseMimeType:
-                "application/json",
-            },
+            temperature: 0.1,
+            max_tokens: 512,
           },
           {
             headers: {
-              "Content-Type":
-                "application/json",
-
-              "x-goog-api-key":
-                process.env.GEMINI_API_KEY,
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${process.env.GROQ_API_KEY}`,
             },
-
             timeout: 60000,
           }
         );
 
       const text =
         response.data
-          ?.candidates?.[0]
-          ?.content?.parts?.[0]
-          ?.text;
+          ?.choices?.[0]
+          ?.message?.content;
 
       if (!text) {
         throw new Error(
-          "Empty Gemini response."
+          "Empty Groq response."
         );
       }
 
       console.log(
-        "Gemini raw response:",
+        "Groq raw response:",
         text
       );
+
+      // Strip markdown code blocks if present
+      const cleaned = text
+        .replace(/```json\s*/gi, "")
+        .replace(/```\s*/gi, "")
+        .trim();
 
       let parsedResult;
 
       try {
         parsedResult =
-          JSON.parse(text);
+          JSON.parse(cleaned);
       } catch (parseError) {
         console.error(
-          "Gemini JSON parse error:",
+          "Groq JSON parse error:",
           parseError.message
         );
 
         throw new Error(
-          "Gemini returned invalid JSON."
+          "Groq returned invalid JSON."
         );
       }
 
@@ -494,7 +466,7 @@ Use exactly this structure:
 
         reason:
           parsedResult.reason ||
-          "Gemini could not provide a verification reason.",
+          "Groq could not provide a verification reason.",
 
         confidence:
           Number(
@@ -515,60 +487,38 @@ Use exactly this structure:
       lastError = error;
 
       console.error(
-        `Gemini attempt ${attempt} failed.`
+        `Groq attempt ${attempt} failed.`
       );
 
       console.error(
-        "Gemini status:",
+        "Groq status:",
         error.response?.status ||
           "Unavailable"
       );
 
       console.error(
-        "Gemini response:",
+        "Groq response:",
         error.response?.data ||
           "No response data"
       );
 
       console.error(
-        "Gemini message:",
+        "Groq message:",
         error.message
       );
 
       // QUOTA ERROR
-
       if (
-        error.response?.status ===
-        429
-      ) {
-        console.log(
-          "Gemini quota exceeded."
-        );
-
-        throw new Error(
-          "Gemini API quota exceeded."
-        );
-      }
-
-      // RETRY 503
-
-      if (
-        error.response?.status ===
-          503 &&
+        error.response?.status === 429 &&
         attempt < 3
       ) {
         console.log(
-          "Gemini temporarily unavailable. Retrying in 3 seconds..."
+          "Groq rate limited. Retrying in 3 seconds..."
         );
-
         await new Promise(
           (resolve) =>
-            setTimeout(
-              resolve,
-              3000
-            )
+            setTimeout(resolve, 3000)
         );
-
         continue;
       }
 
@@ -577,7 +527,7 @@ Use exactly this structure:
   }
 
   throw new Error(
-    `Gemini API failed: ${
+    `Groq API failed: ${
       lastError?.response
         ?.status ||
       lastError?.message ||
@@ -744,7 +694,7 @@ app.post(
       }
 
       // ======================================
-      // STEP 2: GEMINI VERIFICATION
+      // STEP 2: GROQ VERIFICATION
       // ======================================
 
       let result;
@@ -757,13 +707,18 @@ app.post(
           );
 
         console.log(
-          "Gemini verification result:",
+          "Groq verification result:",
           result
         );
       } catch (error) {
         console.error(
-          "Gemini verification failed:",
+          "Groq verification failed:",
           error.message
+        );
+
+        console.error(
+          "Groq error details:",
+          error.response?.data || "No response data"
         );
 
         result = {
@@ -771,7 +726,7 @@ app.post(
             "Unverified",
 
           reason:
-            "Web sources were found, but Gemini AI analysis is temporarily unavailable.",
+            `AI analysis failed: ${error.message}`,
 
           confidence: 30,
 
