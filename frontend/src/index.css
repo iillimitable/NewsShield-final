@@ -11,11 +11,51 @@ html {
 body {
   margin: 0;
   min-width: 320px;
-  color: white;
+  color: #172554;
   font-family: Inter, system-ui, sans-serif;
-
-  background:
-    radial-gradient(circle at 20% 20%, #164e63 0%, transparent 30%),
-    radial-gradient(circle at 80% 10%, #1e3a8a 0%, transparent 30%),
-    linear-gradient(135deg, #0f172a, #172554, #0c4a6e);
+  background: #f7fbff;
 }
+
+/* Light visual system: these tokens intentionally override the former dark
+   Tailwind palette without changing the app's verification behavior. */
+.bg-slate-950, .bg-slate-950\/95, .bg-slate-950\/70, .bg-slate-950\/60, .bg-slate-950\/50, .bg-slate-950\/40 {
+  background-color: #f8fbff !important;
+}
+.bg-slate-900, .bg-slate-900\/90, .bg-slate-900\/80, .bg-slate-900\/70, .bg-slate-900\/60 {
+  background-color: #ffffff !important;
+}
+.bg-slate-800, .bg-slate-800\/70, .bg-slate-800\/40 {
+  background-color: #eff6ff !important;
+}
+.border-slate-900, .border-slate-800, .border-slate-800\/80, .border-slate-700, .border-slate-600 {
+  border-color: #dbe7f3 !important;
+}
+.text-white, .text-slate-200, .text-slate-300 {
+  color: #172554 !important;
+}
+.text-slate-400 { color: #475569 !important; }
+.text-slate-500 { color: #64748b !important; }
+.text-slate-600, .text-slate-700 { color: #94a3b8 !important; }
+.text-slate-800 { color: #cbd5e1 !important; }
+
+main[class*="bg-slate"] {
+  background-color: #f7fbff !important;
+  background-image:
+    radial-gradient(circle at 12% 4%, rgba(14, 165, 233, .13), transparent 26%),
+    radial-gradient(circle at 88% 10%, rgba(99, 102, 241, .09), transparent 24%) !important;
+}
+
+header {
+  background: rgba(255, 255, 255, .92) !important;
+  border-color: #dbe7f3 !important;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, .06) !important;
+}
+
+input, textarea {
+  color: #172554 !important;
+  background-color: #f8fbff !important;
+}
+
+input::placeholder, textarea::placeholder { color: #94a3b8 !important; }
+
+.bg-cyan-500, .bg-blue-600 { color: #fff !important; }
